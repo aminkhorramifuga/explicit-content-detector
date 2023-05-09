@@ -1,17 +1,6 @@
-import speech from "@google-cloud/speech";
-import fs from "fs";
-import streamToArray from "stream-to-array";
-
-const { project_id, private_key, client_email, api_key } = process.env;
-
-const client = new speech.SpeechClient({
-  projectId: project_id,
-  credentials: {
-    private_key,
-    client_email,
-    api_key
-  },
-});
+import speech from '@google-cloud/speech';
+import streamToArray from 'stream-to-array';
+import splitBuffer from '../../utils/split-buffer/index.js';
 
 /**
  * Transcribes the given audio using Google Speech-to-Text API.
@@ -22,29 +11,35 @@ const client = new speech.SpeechClient({
  * @param {string} encoding - The encoding of the audio data (e.g., 'LINEAR16', 'FLAC', 'MP3', etc.).
  * @param {number} sampleRateHertz - The sample rate of the audio data in Hertz (e.g., 44100, 48000, etc.).
  * @param {string} languageCode - The BCP-47 language code of the spoken language in the audio (e.g., 'en-US', 'fr-FR', etc.).
+ * @param {Object} GGCredentials - The google cloud required creds.
  * @returns {Promise<string>} A promise that resolves to the transcribed text.
  * @throws {Error} If there is an error during the transcription process.
  */
-async function transcribeAudio(
+async function transcribeAudioFromGC(
   audioBuffer,
   encoding,
   sampleRateHertz,
-  languageCode
+  languageCode,
+  auth
 ) {
+  
+  const client = new speech.SpeechClient({
+    auth
+  });
+
   const config = {
     encoding: encoding,
     sampleRateHertz: sampleRateHertz,
     languageCode: languageCode,
   };
 
-  const chunks = await streamToArray(audioBuffer, { chunkSize: 1024 * 1024 }); // split into 1MB chunks
-  console.log("response", chunks, audioBuffer);
+  const chunks = splitBuffer(audioBuffer, 2048 * 2048); // split into 1MB chunks
 
   let response = null;
 
   for (const [index, chunk] of chunks.entries()) {
     const audio = {
-      content: chunk.toString("base64"),
+      content: chunk.toString('base64'),
     };
 
     const request = {
@@ -53,7 +48,7 @@ async function transcribeAudio(
     };
 
     const res = await client.recognize(request);
-
+    console.log('response', res, chunks, audioBuffer);
     if (response === null) {
       response = partialResponse;
     } else {
@@ -63,9 +58,9 @@ async function transcribeAudio(
 
   const transcription = response?.results
     ?.map((result) => result.alternatives[0].transcript)
-    .join(" ");
+    .join(' ');
 
   return transcription;
 }
 
-export default transcribeAudio;
+export default transcribeAudioFromGC;
